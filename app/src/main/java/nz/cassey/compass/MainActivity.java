@@ -5,7 +5,16 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import android.view.Surface;
 import android.view.WindowManager;
 
@@ -16,12 +25,51 @@ public class MainActivity extends Activity implements SensorEventListener {
     private final float[] gravity = new float[3], geomag = new float[3];
     private boolean haveG, haveM;
     private float smoothed = Float.NaN;
+    private String current = "0", updateUrl = null;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+
+    private void checkUpdate() {
+        post("Checking for updates...", false);
+        new Thread(new Runnable() { public void run() {
+            try {
+                HttpURLConnection con = (HttpURLConnection) new URL("https://api.github.com/repos/Cassey88/compass/releases/latest").openConnection();
+                con.setConnectTimeout(8000); con.setReadTimeout(8000);
+                con.setRequestProperty("Accept", "application/vnd.github+json");
+                BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream()));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                JSONObject j = new JSONObject(sb.toString());
+                String tag = j.getString("tag_name").replace("v", "");
+                String url = j.getJSONArray("assets").getJSONObject(0).getString("browser_download_url");
+                if (newer(tag, current)) { updateUrl = url; post("Update available: v" + tag + " - tap here to download", true); }
+                else { updateUrl = null; post("You have the latest version", false); }
+            } catch (Exception e) { post("Could not check for updates (offline?)", false); }
+        } }).start();
+    }
+
+    private boolean newer(String a, String b) {
+        String[] x = a.split("\\."), y = b.split("\\.");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int p = i < x.length ? Integer.parseInt(x[i]) : 0, q = i < y.length ? Integer.parseInt(y[i]) : 0;
+            if (p != q) return p > q;
+        }
+        return false;
+    }
+
+    private void post(final String s, final boolean upd) { ui.post(new Runnable() { public void run() { view.setStatus(s, upd); } }); }
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         view = new CompassView(this);
         setContentView(view);
+        String ver = "?";
+        try { ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) {}
+        current = ver;
+        view.setVersion("Compass v" + ver + "  \u2022  tap here to check for updates");
+        view.setOnFooterTap(new Runnable() { public void run() { if (updateUrl != null) startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))); else checkUpdate(); } });
+        checkUpdate();
         sm = (SensorManager) getSystemService(SENSOR_SERVICE);
         rotation = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
         accel = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);

@@ -17,14 +17,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - id: ver
+        run: echo "v=$(grep -oP "versionName '\K[^']+" app/build.gradle)" >> $GITHUB_OUTPUT
       - run: gradle assembleDebug
-      - run: cp app/build/outputs/apk/debug/app-debug.apk Compass-v1.0.apk
+      - run: cp app/build/outputs/apk/debug/app-debug.apk Compass-v${{ steps.ver.outputs.v }}.apk
       - uses: actions/upload-artifact@v4
         with:
           name: Compass-apk
-          path: Compass-v1.0.apk
+          path: Compass-v${{ steps.ver.outputs.v }}.apk
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0
-          name: Compass v1.0
-          files: Compass-v1.0.apk
+          tag_name: v${{ steps.ver.outputs.v }}
+          name: Compass v${{ steps.ver.outputs.v }}
+          make_latest: true
+          files: Compass-v${{ steps.ver.outputs.v }}.apk

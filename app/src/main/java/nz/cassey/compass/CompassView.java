@@ -5,12 +5,25 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.view.MotionEvent;
 import android.view.View;
 
 public class CompassView extends View {
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float heading = 0f;
     private boolean noSensor = false;
+    private String versionText = "", statusText = "";
+    private boolean updateReady = false;
+    private Runnable onFooterTap;
+
+    public void setVersion(String s) { versionText = s; invalidate(); }
+    public void setStatus(String s, boolean update) { statusText = s; updateReady = update; invalidate(); }
+    public void setOnFooterTap(Runnable r) { onFooterTap = r; }
+
+    @Override public boolean onTouchEvent(MotionEvent e) {
+        if (e.getAction() == MotionEvent.ACTION_UP && e.getY() > getHeight() * 0.85f && onFooterTap != null) onFooterTap.run();
+        return true;
+    }
     private static final String[] NAMES = {"N","NE","E","SE","S","SW","W","NW"};
 
     public CompassView(Context c) { super(c); setBackgroundColor(Color.rgb(18, 22, 28)); }
@@ -23,6 +36,7 @@ public class CompassView extends View {
         float cx = w / 2f, cy = h * 0.5f, r = Math.min(w, h) * 0.40f;
         p.setTextAlign(Paint.Align.CENTER);
 
+        drawFooter(c, w, h);
         if (noSensor) {
             p.setStyle(Paint.Style.FILL); p.setColor(Color.WHITE); p.setTextSize(r * 0.14f);
             c.drawText("No compass sensor on this device", cx, cy, p);
@@ -86,5 +100,15 @@ public class CompassView extends View {
 
         p.setColor(Color.rgb(120, 130, 145)); p.setTextSize(r * 0.09f);
         c.drawText("Keep away from magnets and metal. Wave in a figure-8 to calibrate.", cx, cy + r + r * 0.3f, p);
+    }
+
+    private void drawFooter(Canvas c, float w, float h) {
+        p.setStyle(Paint.Style.FILL); p.setTextAlign(Paint.Align.CENTER);
+        float u = Math.min(w, h) * 0.04f;
+        p.setTextSize(u * 1.1f);
+        p.setColor(updateReady ? Color.rgb(255, 193, 7) : Color.rgb(170, 180, 195));
+        c.drawText(statusText, w / 2f, h - u * 3.2f, p);
+        p.setTextSize(u); p.setColor(Color.rgb(120, 130, 145));
+        c.drawText(versionText, w / 2f, h - u * 1.6f, p);
     }
 }

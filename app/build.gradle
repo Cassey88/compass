@@ -10,6 +10,14 @@ android {
         versionCode 1
         versionName '1.0'
     }
+    signingConfigs {
+        debug {
+            storeFile file('../compass.keystore')
+            storePassword 'compass123'
+            keyAlias 'compass'
+            keyPassword 'compass123'
+        }
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
