@@ -5,7 +5,12 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.hardware.GeomagneticField;
+import android.location.Location;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -26,6 +31,46 @@ public class MainActivity extends Activity implements SensorEventListener {
     private boolean haveG, haveM;
     private float smoothed = Float.NaN;
     private String current = "0", updateUrl = null;
+    private boolean trueMode = true;
+    private float declination = 19.4f;   // Auckland default until location is known
+    private String declSource = "Auckland";
+    private float lockedAt = Float.NaN, magHeading = 0f;
+
+    private void updateDeclination() {
+        try {
+            Location l = null;
+            if (Build_isM_and_lacks()) { /* use default */ }
+            else {
+                LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
+                for (String pr : lm.getProviders(true)) {
+                    Location t = lm.getLastKnownLocation(pr);
+                    if (t != null && (l == null || t.getTime() > l.getTime())) l = t;
+                }
+            }
+            if (l != null) {
+                declination = new GeomagneticField((float) l.getLatitude(), (float) l.getLongitude(), (float) l.getAltitude(), System.currentTimeMillis()).getDeclination();
+                declSource = "your location";
+            }
+        } catch (Exception ignored) {}
+        refreshNorth();
+    }
+
+    private boolean Build_isM_and_lacks() {
+        return android.os.Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] res) { updateDeclination(); }
+
+    private void refreshNorth() {
+        String d = String.format(java.util.Locale.US, "%+.1f\u00B0", declination);
+        view.setNorth(trueMode, trueMode ? "True north (declination " + d + ", " + declSource + ")" : "Magnetic north");
+        showHeading();
+    }
+
+    private void showHeading() {
+        float h = trueMode ? (magHeading + declination + 360f) % 360f : magHeading;
+        view.setHeading(h);
+    }
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     private void checkUpdate() {
@@ -69,6 +114,14 @@ public class MainActivity extends Activity implements SensorEventListener {
         current = ver;
         view.setVersion("Compass v" + ver + "  \u2022  tap here to check for updates");
         view.setOnFooterTap(new Runnable() { public void run() { if (updateUrl != null) startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))); else checkUpdate(); } });
+        view.setOnToggleNorth(new Runnable() { public void run() { trueMode = !trueMode; lockedAt = Float.NaN; view.setLock(lockedAt); refreshNorth(); } });
+        view.setOnToggleLock(new Runnable() { public void run() {
+            if (Float.isNaN(lockedAt)) lockedAt = trueMode ? (magHeading + declination + 360f) % 360f : magHeading;
+            else lockedAt = Float.NaN;
+            view.setLock(lockedAt);
+        } });
+        if (android.os.Build.VERSION.SDK_INT >= 23 && Build_isM_and_lacks()) requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1);
+        updateDeclination();
         checkUpdate();
         sm = (SensorManager) getSystemService(SENSOR_SERVICE);
         rotation = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
@@ -111,7 +164,8 @@ public class MainActivity extends Activity implements SensorEventListener {
             float d = ((az - smoothed + 540f) % 360f) - 180f;
             smoothed = (smoothed + 0.15f * d + 360f) % 360f;
         }
-        view.setHeading(smoothed);
+        magHeading = smoothed;
+        showHeading();
     }
 
     private void lp(float[] out, float[] in) { for (int i = 0; i < 3; i++) out[i] += 0.1f * (in[i] - out[i]); }
